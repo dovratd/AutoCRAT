@@ -1,0 +1,437 @@
+####################   Configuration file for AutoCRAT.py   ####################
+#
+#
+# Use this for replication experiments with 3 arrays, labeled with SiR, GFP and tdTomato,
+# imaged on the CD7 microscope.
+#
+#
+---
+
+
+########## General parameters:
+
+
+# Which timepoints to analyze (0-indexed, last number not included. E.g. [0, 20] will
+# analyze the first 20 timepoints).
+# To analyze the entire movie, simply leave this empty.
+timepoints: [0, 120]
+
+# Enable distance mode (True/False).
+# A chart will be added to each cell in the Results file, showing the distance between
+# each pair of dots in the cell over time.
+# The average distance between dots in all cells will be recorded in the log file.
+dist_mode: True
+
+# Number of concurrent processes to use during computation (integer or 'Auto').
+# Using multiprocessing can make AutoCRAT significantly faster, especially on machines
+# with multiple CPUs. Keep this on 'Auto' to make best use of your system resources.
+multi_processes: 'Auto'
+
+# Pixel size (or step size for the Z-axis). Dimensions are [z, y, x], units are um.
+# This will only be used if not automatically found in the movie metadata.
+pixel_size: [0.8, 0.22, 0.22]
+
+# Enable dev mode (True/False).
+# Extra information about the analysis will be exported and logged, mostly for testing,
+# debugging and parameter refinement.
+dev_mode: False
+
+
+########## Import parameters:
+
+
+# Movie import mode ('BioFormats'/'TIFF sequence').
+# BioFormats mode allows easy import of a wide variety of microscopy file formats (see
+# https://bio-formats.readthedocs.io/en/stable/supported-formats.html), including metadata.
+# Alternatively, movies can be imported as sequences of TIFF files, with the file names
+# specifying the channel, time and Z-stack indices (e.g. Filename_ch00_t00_z00.tif).
+import_mode: 'BioFormats'
+
+# In 'TIFF sequence' mode, specify the identifiers used in the file names to denote the
+# different axes (e.g. if the file names look like this: Filename_ch00_t00_z00.tif,
+# enter the following: ['ch', 't', 'z']).
+# The order of this list must be: channel, time, Z-stack (even if these identifiers
+# appear in a different order in the actual file names).
+axes_identifiers: ['ch', 't', 'z']
+
+
+########## Channel analysis preferences:
+
+
+# Names of all channels contained in the movie.
+# The total number of lines below should be equal to the number of channels, and they
+# should be named according to the order in which they are contained in the movie file.
+# If certain channels do not need to be analyzed by AutoCRAT at all (e.g. brightfield),
+# it's sufficient to leave a dash (-) with no text in this list as a placeholder.
+# Channel designations (such as c0, preceded by the '&' symbol) will be used in all
+# further parameters below.
+# Note: In 'BioFormats' mode, AutoCRAT can often find channel names automatically in the
+# movie metadata. In this case, the number of lines doesn't have to be equal to the
+# number of channels, and the order doesn't matter. However, the names given here
+# must be identical to those found in the metadata.
+channel_names:
+  - &c0 'Cy5'
+  - &c1 'tdTom'
+  - &c2 'EGFP'
+
+# Which channels in the movie contain fluorescent dots which should be identified,
+# tracked and quantified.
+# Note: This can't be empty; at least one channel *must* contain dots to be tracked.
+dot_tracking_channels: [*c0, *c1]
+
+# Which channels are absolutely required to appear in every cell.
+# Cells that don't have at least one fluorescent dot in each of these channels will not 
+# be considered for further analysis, Excel export, etc.
+# Channels that appear in dot_tracking_channels but not in required_channels will be
+# considered optional: dots in these channels may appear in some cells but not in others,
+# and their quantification results will be exported when available.
+required_channels: [*c0, *c1]
+
+# Channels in which dots should be identified only by co-localization with other channels.
+# The normal algorithm used by AutoCRAT for localizing and tracking fluorescent dots
+# (based on TrackPy) will *not* be used for these channels. Instead, an attempt will be made
+# to identify dots in this channel based on proximity to dots in other channels.
+# In these channels, the brightest dot will be identified within a small region around the
+# average location of the dots identified in other channels, in the same cell and in the
+# same timepoint.
+# This is useful when a channel exhibits multiple dots per cell, potentially confusing the
+# tracking algorithm, but the only dot we wish to track over time and quantify is the one
+# that co-localizes well with dots in other channels.
+# *Warning*: Only enable this option if the other channels (present in dot_tracking_channels
+# but not here) each contain just one dot per cell (otherwise the average location of those
+# other dots might be meaningless).
+# Note: Channels listed here can't be listed in required_channels.
+# By default, leave this empty. Tracking and quantification using TrackPy will be performed
+# for all channels in dot_tracking_channels.
+identify_by_coloc: [*c2]
+
+# Channels on which to perform gap-filling based on co-localization with other channels.
+# These channels will undergo normal identification and tracking of fluorescent dots, but
+# if certain timepoints are missing in a certain track (because the dots were too weak
+# to be identified by TrackPy at that timepoint), and the missing dots are assumed to
+# be highly co-localized with dots that were identified in other channels, AutoCRAT will
+# try to locate and quantify the missing dots based on this assumption. An attempt will be
+# made to identify the brightest dot in a small region around the average location of the
+# dots identified in other channels, in the same cell and in the same timepoint.
+# *Warning*: This is a powerful tool to identify weak dots with poor signal-to-noise ratios,
+# but it can also introduce a lot of garbage into the quantification data. Only enable
+# this option of you are certain of the following:
+# 1. In the channels selected for gap-filling, there should *always* be a dot in every
+#    timepoint (it's just that sometimes this dot is weak and hard to track).
+# 2. This dot should always be highly co-localized with the dots in the other channels
+#    (to within about one dot_diameter).
+# 3. There is just one dot per cell in each of the other channels (otherwise the average
+#    location of those other dots might be meaningless).
+# If there is more than one dot per cell in the channel undergoing gap-filling, the track
+# closest on average to the tracks in the other channels will be selected for gap-filling.
+# To disable this option, simply leave the parameter empty.
+channels_to_gap_fill: []
+
+# The order in which results will be exported and displayed.
+# This is for display purposes only and should not affect the actual results.
+# For replication time analysis of two or more arrays, it's convenient to set this according to
+# the order in which the arrays are expected to be replicated. 
+# If you don't care, leave this empty.
+channel_order: [*c0, *c1]
+
+
+########## Particle localization parameters:
+
+
+# Rough estimate of the number of cells in an average frame.
+# Decreasing this parameter will make the identification of fluorescent dots more stringent,
+# and only the brightest dots will be considered. Increasing it will allow identification of
+# weaker dots, but may also lead to quantification of spurious signals and tracking errors.
+num_of_cells: 300
+
+# Estimate of the number of fluorescent dots expected in an average cell, in each channel.
+# If each channel corresponds to imaging of a single fluorescently-labeled locus in haploid cells,
+# this should be 1. If there is a reason to expect more than 1 dot per cell in a certain channel,
+# make an estimate of the average number (this doesn't have to be an integer - if 1 dot per cell
+# is expected early in the movie but 2 later on, you can make an estimate of 1.5).
+dots_per_cell:
+  *c0: 1
+  *c1: 1
+  *c2: 1
+
+# Diameter of the fluorescent dots to be located by TrackPy.
+# Dimensions are [z, y, x], units are pixels. Values must be *odd* integers.
+# If you're not sure, it's better to choose larger values.
+dot_diameter:
+  *c0: [3, 5, 5]
+  *c1: [3, 5, 5]
+  *c2: [3, 5, 5]
+
+# Minimum allowable separation between adjacent dots.
+# Dimensions are [z, y, x], units are pixels. Values must be integers.
+# This should usually be at least equal to dot_diameter.
+dot_separation:
+  *c0: [3, 5, 5]
+  *c1: [3, 5, 5]
+  *c2: [3, 5, 5]
+
+# For channels in which dots should be identified by co-localization with other channels
+# (identify_by_coloc and channels_to_gap_fill), the diameter of the region around the reference
+# dots in which AutoCRAT will look for dots.
+# Dimensions are [z, y, x], units are pixels.
+# This should usually be at least equal to dot_diameter.
+idcl_slice_diameter:
+  *c2: [3, 5, 5]
+
+
+########## Particle tracking parameters:
+
+
+# How far can the dot move in each timepoint and still get tracked.
+# Dimensions are [z, y, x], units are pixels.
+search_range:
+  *c0: [4, 10, 10]
+  *c1: [4, 10, 10]
+  *c2: [4, 10, 10]
+
+# Number of timepoints after a dot disappears (or is lost by the tracking algorithm),
+# during which it can be re-identified and merged with the existing track at the same location.
+# Note: This is a TrackPy parameter for linking memory during the construction of a single track.
+# Regardless of this parameter, if a dot is lost (cutting off the track) and is then
+# re-identified later (beginning a new track), these two tracks might be merged later on
+# if they both co-localize with a long, contiguous track in another channel.
+link_memory:
+  *c0: 3
+  *c1: 3
+  *c2: 3
+
+# Minimum allowable track length (in timepoints).
+# Use this to discard short tracks that are probably spurious, and do not represent real fluorescent dots.
+min_track_length:
+  *c0: 20
+  *c1: 20
+  *c2: 15
+
+
+########## Track alignment and merging parameters:
+
+
+# Minimum allowable overlap (in timepoints) between two tracks for them to be aligned.
+# Before checking whether two tracks spatially co-localize (and are therefore probably in the
+# same cell), they must overlap temporally.
+overlap_threshold: 10
+
+# Maximum allowable *average* distance (in um), for two tracks to be considered co-localized.
+# If dots in the same cell are generally highly co-localized, keep this parameter low
+# to maximize alignment accuracy. If the dots move about independently in the nucleus,
+# increase this parameter to roughly the diameter of the nucleus.
+avg_dist_threshold: 1.2
+
+# Maximum expected distance (in um) between dots in the same cell.
+# This applies to individual timepoints. If, during a particular timepoint, the distance
+# between any two dots is greater than defined here, it's probably a tracking error,
+# and AutoCRAT will discard the dot that is an outlier relative to its own track.
+# This parameter should be roughly the maximum distance that any dots in the same cell
+# should ever be from each other (e.g. the diameter of the nucleus).
+# This should be larger than avg_dist_threshold.
+max_dist_threshold: 2.5
+
+# Maximum temporal overlap between tracks to be merged (in timepoints).
+# If two tracks in the *same* channel were determined to be located in the same cell
+# (because they both co-localize with another track in a different channel), and they
+# overlap by up to this many timepoints, they will be merged.
+# The overlapping timepoints with weaker intensity will be discarded.
+# This fixes tracking errors in which TrackPy gets "distracted" by a spurious dot,
+# tracks it for a few timepoints and stops, while the real dot is tracked as a new,
+# separate track. This leads to the same dot being separated into two tracks with
+# a small temporal overlap between them.
+same_track_max_overlap: 10
+
+# Maximum allowable number of tracks in a single cell (after merging).
+# Cells with an unexpectedly large number of tracks are probably due to tracking errors,
+# dead cells with high autofluorescence, or several cells on top of each other.
+# This parameter is optional and can be left empty.
+max_tracks: 3
+
+
+########## Replication time parameters:
+
+
+# Channels on which to perform sigmoid fitting for replication time analysis.
+channels_to_fit: [*c0, *c1]
+
+# Time window sizes for sigmoidal fitting ([min, max] in timepoints).
+# The minimal value should correspond to the shortest time window within which an increase
+# in fluorescent signal can be considered a real indicator of replication, rather than
+# spurious noise. The maximum value should roughly correspond to the maximum reasonable
+# time window for replication analysis: the span of time from early S phase to mitosis.
+window_sizes: [25, 80]
+
+# Num. of timepoints from the edge of the time series where a sigmoid midpoint is allowed.
+# We like to see sigmoids where there is some meaningful period of signal stability
+# before and after the signal increase, so if the midpoint is right at the beginning
+# or end of the track the fit should be discarded.
+dist_from_edge: 6
+
+# Minimum allowable weight for the sum of all fits (normalized for length of data).
+# Increasing this parameter will make fitting more stringent, and tracks with
+# less reliable sigmoids will more likely be discarded.
+min_total_weight: 3
+
+# Maximum allowable weighted parameter estimation variance (midpoint CoV).
+# Decreasing this parameter will make fitting more stringent, and tracks with
+# noisier sigmoids will more likely be discarded.
+max_wcov: 10
+
+# Maximum allowable width of peaks in the probability density function of sigmoid fits.   
+# This parameter *roughly* corresponds to the allowable uncertainty (in timepoints) regarding
+# the exact midpoint of the sigmoid.
+# Decreasing this parameter will make sigmoid fitting more stringent, and tracks with sigmoids
+# that are less sharply defined and have more ambiguous midpoints will be discarded.
+max_width: 20
+
+# Minimum allowable distance (in timepoints) between peaks in the probability density
+# function of sigmoid fits.
+# This should be roughly on the order of one cell cycle duration or a bit less, to rule out 
+# cells that display more than one sigmoidal intensity increase during a single cell cycle.
+min_sigmoid_dist: 60
+
+# Minimum allowable prominence of peaks in the probability density function of sigmoid fits.
+# Increasing required prominence will make sigmoid fitting more stringent - more tracks will be discarded.
+prominence: 0.02
+
+# Minimum allowable ratio between the prominences of two adjacent sigmoid PDF peaks.
+# If more than one peak is found, indicating more than one sigmoidal intensity increase
+# during a single cell cycle, the more salient sigmoid will still be taken, but only if
+# it's much more prominent than the other ones (by at least this ratio).
+prominence_ratio: 8
+
+# Range of deltaT values (differences between sigmoidal midpoints in different channels)
+# for which the median will be displayed in the replication summary file.
+# Note: This is for convenience only; deltaT values outside this range will also be 
+# available in the summary file as well as the median of all deltaT values.
+delta_t_range: [5, 60]
+
+
+########## DSB analysis parameters:
+
+
+# Channels for double-strand break analysis.
+# If fluorescent dots in two channels label nearby loci and are usually co-localized, loss of
+# co-localization may indicate a double-strand break between the labeled loci. AutoCRAT can report
+# which cells show a persistent loss of dot co-localization above a defined distance threshold.
+# To enable, select exactly 2 channels, which are each expected to have just one dot per cell.
+# To disable this option, simply leave the parameter empty.
+dsb_channels: [*c0, *c1]
+
+# Minimum distance (in um) between dots that can be considered indicative of a double-strand
+# break, if it persists for some time (as defined in dsb_time_window below).
+dsb_distance: 1.2
+
+# Length of time window (in timepoints) during which the average distance between dots must
+# be higher than dsb_distance for a double-strand break to be identified.
+# Since co-localized dots may occasionally separate a bit even in the absence of a DSB,
+# setting this (and dsb_distance) too low may lead to false positives. Setting this too high
+# may lead to false negatives since DSBs may eventually be repaired, restoring co-localization.
+dsb_time_window: 20
+
+
+########## Replisome-Normalized Signal Averaging (RNSA) parameters:
+
+
+# Channels for Replisome-Normalized Signal Averaging.
+# Generate specialized charts that quantify changes in intensity of fluorescent features in
+# a certain channel (e.g. transcription levels at a fluorescently-labeled transcription site),
+# averaged over all cells, normalized to the progression of the replisome between two labeled
+# arrays in each cell (see figures in Tsirkas et al., NAR 2022).
+# To enable this option, select exactly 3 channels in the following order:
+# 1. The array expected to be replicated first.
+# 2. The array expected to be replicated second.
+# 3. The channel to be normalized according to the replication times of these two arrays.
+# To disable this option, simply leave the parameter empty.
+# Note: If this option is enabled, delta_t_range must also be provided (below), and must
+# contain positive values. Only cells with deltaT values inside this range will be included
+# in RNSA results, and these cells must replicate the first array before the second.
+rnsa_channels: [*c0, *c1, *c2]
+
+# The channel or channels to which the averaged signal should be normalized.
+# If one channel is selected (either the first or second of the rnsa_channels defined above), 
+# the signal in the RNSA channel will be aligned to the replication time of that array.
+# The X-axis will represent actual time, with 0 as the time the selected array was replicated.
+# If two channels are selected (both the first and second rnsa_channels defined above), 
+# the signal in the RNSA channel will be normalized to both replication events. 
+# The X-axis will represent replisome-normalized time, with 0 as the time the first array was 
+# replicated and 1 as the time the second array was replicated (as can be seen in Tsirkas 
+# et al., NAR 2022).
+normalize_x_axis_to: [*c0, *c1]
+
+# Normalize Y-axis (True/False).
+# If True, the intensity values of each cell in the RNSA channels will be normalized
+# before all cells are averaged, such that the timepoint with the lowest intensity for
+# a given cell will be defined as 0 and the timepoint with the highest intensity will
+# be defined as 1. Thus, the RNSA chart will display the relative change in signal
+# intensity over replisome-normalized time, rather than the actual signal intensity.
+# If False, the raw fluorescent intensity values of all cells will be averaged.
+normalize_y_axis: True
+
+# Axes bounds for the RNSA Excel chart.
+# Note: This is for display purposes only. All data is exported, so the axes bounds
+# can also be changed manually later in Excel.
+rnsa_x_axis: [-1, 2]
+rnsa_y_axis: [0.1, 0.8]
+# Optional bounds for secondary Y-axis, when relevant.
+rnsa_y2_axis: [0.1, 0.8]
+
+
+########## Nuclear envelope parameters:
+
+
+# Channel containing nuclear envelope labeling.
+nuc_channel: 
+
+# Expected radius of the nucleus (in um).
+# This is a rough estimate, and only needs to be accurate to within ~50% of the actual radius.
+nuc_radius: 1
+
+# Size of the cube that will be sliced from the movie, as multiple of the expected nuclear
+# radius. A bigger number here might make it more difficult to correctly fit an ellipsoid
+# model to the nuclear envelope intensity data, but allows for more uncertainty in the
+# expected nuclear radius parameter.
+uncertainty_radii: 2
+
+# Minimum number of successful ellipsoid fits required per cell per timepoint.
+# A higher number will increase the accuracy of nuclear envelope modelling, but require more
+# computation time, and may lower the chances of successful modelling in noisy cells.
+min_fits: 40
+
+# Maximum number of ellipsoid fits that will be attempted per cell per timepoint.
+# A higher number will increase the chances of successful nuclear envelope modelling in
+# noisy cells, but requires more computation time.
+# Note: This is the maximum number of attempts; in cases where the nuclear envelope is clear
+# and relatively easy to identify, fewer attempts will be made.
+max_fits: 400
+
+# Perform nuclear envelope analysis only for cells with replication times within delta_t_range
+# (True/False). This setting is only relevant when two channels are selected for replication
+# time analysis in channels_to_fit. Only cells eligible for inclusion in RNSA analysis will
+# undergo nuclear envelope fitting.
+rep_cells_only: True
+
+# Normalize the radial nuclear location of the dots to a relative volume-based location by
+# taking the third power of the radial number (True/False).
+# If True, dots that have a random localization in the nucleus are expected to average 0.5 on
+# the Volume-normalized Nuclear Location scale.
+# If False, such dots are expected to average almost 0.8 (or more accurately, 1/2^1/3) on the
+# (un-normalized) Nuclear Location scale (consider that an inner sphere with a radius of
+# ~0.8um has half the volume of a sphere with radius of 1um).
+nuc_vol_norm: True
+
+# Extended nuclear envelope data (True/False).
+# Extra information about the nuclear envelope analysis will be exported.
+nuc_data: False
+
+
+########## Export parameters:
+
+
+# Channel colors for the Excel charts. Will only be used if colors are not found in the PIMS metadata.
+# See options here: https://xlsxwriter.readthedocs.io/working_with_colors.html
+channel_colors:
+  *c0: 'red'
+  *c1: 'orange'
+  *c2: 'green'
