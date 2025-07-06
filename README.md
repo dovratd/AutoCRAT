@@ -1,5 +1,7 @@
 # AutoCRAT
 Automated Chromosome Replication Analysis & Tracking
+[![DOI](https://zenodo.org/badge/1014308195.svg)](https://doi.org/10.5281/zenodo.15817321)
+
 
 ## What does it do?
 
